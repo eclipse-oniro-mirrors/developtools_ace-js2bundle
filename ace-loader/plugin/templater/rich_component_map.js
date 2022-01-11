@@ -1544,14 +1544,15 @@ const richNativeTag = {
   'xcomponent': {
     atomic: true,
     selfClosing: true,
-    uevents: ['xcomponentinit', 'xcomponentdestroy'],
+    uevents: ['load', 'destroy'],
     uattrs: {
-      name: {},
+      id: {
+        required: true,
+      },
       type: {
         required: true,
       },
       libraryname: {},
-      id: {},
       ref: {},
     },
   },
