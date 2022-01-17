@@ -21,7 +21,7 @@ const CUSTOM_THEME_PROP_GROUPS = require('./theme/customThemeStyles');
 const OHOS_THEME_PROP_GROUPS = require('./theme/ohosStyles');
 import { mkDir } from './util';
 
-const FILE_EXT_NAME = ['.js', '.css', '.jsx', '.less', '.sass', '.scss', '.md', '.DS_Store', '.hml'];
+const FILE_EXT_NAME = ['.js', '.css', '.jsx', '.less', '.sass', '.scss', '.md', '.DS_Store', '.hml', '.json'];
 const red = '\u001b[31m';
 const reset = '\u001b[39m';
 let input = '';
@@ -110,10 +110,11 @@ class ResourcePlugin {
       circularFile(input, output, '../share');
     });
     compiler.hooks.normalModuleFactory.tap('OtherEntryOptionPlugin', () => {
-      if (process.env.DEVICE_LEVEL === 'card') {
+      if (process.env.DEVICE_LEVEL === 'card' && process.env.compileMode !== 'moduleJson') {
         return;
       }
       addPageEntryObj();
+      entryObj = Object.assign(entryObj, abilityEntryObj);
       for (const key in entryObj) {
         if (!compiler.options.entry[key]) {
           const singleEntry = new SingleEntryPlugin('', entryObj[key], key);
@@ -168,63 +169,116 @@ function addPageEntryObj() {
   return entryObj;
 }
 
+let abilityEntryObj = {};
+function addAbilityEntryObj(moduleJson) {
+  abilityEntryObj = {};
+  const entranceFiles = readAbilityEntrance(moduleJson);
+  entranceFiles.forEach(filePath => {
+    const key = filePath.replace(/^\.\/js\//, './').replace(/\.js$/, '');
+    abilityEntryObj[key] = path.resolve(proces.env.projectPath, '../', filePath);
+  });
+  return abilityEntryObj;
+}
+
+function readAbilityEntrance(moduleJson) {
+  const entranceFiles = [];
+  if (moduleJson.module) {
+    if (moduleJson.module.srcEntrance) {
+      entranceFiles.push(moduleJson.module.srcEntrance);
+    }
+    if (moduleJson.module.abilities && moduleJson.module.abilities.length) {
+      readEntrances(moduleJson.module.abilities, entranceFiles);
+    }
+    if (moduleJson.module.extensionAbilities && moduleJson.module.extensionAbilities.length) {
+      readEntrances(moduleJson.module.extensionAbilities, entranceFiles);
+    }
+  }
+  return entranceFiles;
+}
+
+function readEntrances(abilities, entranceFiles) {
+  abilities.forEach(ability => {
+    if ((!ability.type || ability.type !== 'form') && ability.srcEntrance) {
+      entranceFiles.push(ability.srcEntrance);
+    }
+  });
+}
+
 function readManifest(manifestFilePath) {
   let manifest = {};
   try {
     if (fs.existsSync(manifestFilePath)) {
       const jsonString = fs.readFileSync(manifestFilePath).toString();
       manifest = JSON.parse(jsonString);
-    } else if (process.env.aceConfigPath && fs.existsSync(process.env.aceConfigPath)) {
-      buildManifest(manifest, process.env.aceConfigPath);
+    } else if (process.env.aceModuleJsonPath && fs.existsSync(process.env.aceModuleJsonPath)) {
+      buildManifest(manifest);
    } else {
-    throw Error('\u001b[31m' + 'ERROR: the manifest.json or config.json is lost.' +
+    throw Error('\u001b[31m' + 'ERROR: the manifest.json or module.json is lost.' +
       '\u001b[39m').message;
    }
   } catch (e) {
-    throw Error('\u001b[31m' + 'ERROR: the manifest.json or config.json file format is invalid.' +
+    throw Error('\u001b[31m' + 'ERROR: the manifest.json or module.json file format is invalid.' +
       '\u001b[39m').message;
   }
   return manifest;
 }
 
-function buildManifest(manifest, aceConfigPath) {
+function readModulePages(moduleJson) {
+  if (moduleJson.module.uiSyntax === 'hml' && moduleJson.module.pages) {
+    const modulePagePath = path.resolve(process.env.aceProfilePath,
+      `${moduleJson.module.pages.replace(/\@profile\:/, '')}.json`);
+    if (fs.existsSync(modulePagePath)) {
+      const pagesConfig = JSON.parse(fs.readFileSync(modulePagePath, 'utf-8'));
+      return pagesConfig.src;
+    }
+  }
+}
+
+function readFormPages(moduleJson) {
+  const pages = [];
+  if (moduleJson.module.extensionAbilities && moduleJson.module.extensionAbilities.length) {
+    moduleJson.module.extensionAbilities.forEach(extensionAbility => {
+      if (extensionAbility.type && extensionAbility.type === 'form' && extensionAbility.metadate &&
+        extensionAbility.metadate.length) {
+        extensionAbility.metadate.forEach(item => {
+          if (item.resource && /\@profile\:/.test(item.resource)) {
+            parseFormConfig(item.resource, pages);
+          }
+        });
+      }
+    });
+  }
+}
+
+function parseFormConfig(resource, pages) {
+  const resourceFile = path.resolve(process.env.aceProfilePath,
+    `${resource.replace(/\@profile\:/, '')}.json`);
+  if (fs.existsSync(resourceFile)) {
+    const pagesConfig = JSON.parse(fs.readFileSync(resourceFile, 'utf-8'));
+    if (pagesConfig.forms && pagesConfig.forms.length) {
+      pagesConfig.forms.forEach(form => {
+        if (form.src) {
+          pages.push(form.src);
+        }
+      });
+    }
+  }
+}
+
+function buildManifest(manifest) {
   try {
-    const configJson =  JSON.parse(fs.readFileSync(aceConfigPath).toString());
-    const srcPath = process.env.srcPath;
-    manifest.type = process.env.abilityType;
-    if (configJson.module && configJson.module.abilities) {
-      manifest.pages = getPages(configJson, srcPath);
-    } else {
-      throw Error('\u001b[31m'+
-        'EERROR: the config.json file miss keyword module || module[abilities].' +
-        '\u001b[39m').message;
+    const moduleJson =  JSON.parse(fs.readFileSync(process.env.aceModuleJsonPath).toString());
+    if (process.env.DEVICE_LEVEL === 'rich') {
+      manifest.pages = readModulePages(moduleJson);
+      manifest.abilityEntryObj = addAbilityEntryObj(moduleJson);
+    }
+    if (process.env.DEVICE_LEVEL === 'card') {
+      manifest.pages = readFormPages(moduleJson);
     }
     manifest.minPlatformVersion = configJson.app.apiVersion.compatible;
   } catch (e) {
-    throw Error("\x1B[31m" + 'ERROR: the config.json file is lost or format is invalid.' +
+    throw Error("\x1B[31m" + 'ERROR: the module.json file is lost or format is invalid.' +
       "\x1B[39m").message;
-  }
-}
-
-function getPages(configJson, srcPath) {
-  let pages = []
-  for (const ability of configJson.module.abilities){
-    if (ability.srcPath === srcPath) {
-      readPages(ability, pages, configJson)
-      break;
-    }
-  }
-  return pages;
-}
-
-function readPages(ability, pages, configJson) {
-  for (const js of configJson.module.js){
-    if (ability.name === js.name) {
-      js.pages.forEach(page => {
-        pages.push(page)
-      })
-      break;
-    }
   }
 }
 
