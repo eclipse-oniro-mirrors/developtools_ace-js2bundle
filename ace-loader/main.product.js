@@ -15,6 +15,7 @@
 
 var path = require('path')
 var fs = require('fs')
+var shell = require('shelljs')
 
 const red = '\u001b[31m';
 const reset = '\u001b[39m';
@@ -41,64 +42,12 @@ function readManifest(manifestFilePath) {
     if (fs.existsSync(manifestFilePath)) {
       const jsonString = fs.readFileSync(manifestFilePath).toString();
       manifest = JSON.parse(jsonString);
-    } else if (process.env.aceConfigPath && fs.existsSync(process.env.aceConfigPath)) {
-      buildManifest(manifest, process.env.aceConfigPath);
-   } else {
-    throw Error('\u001b[31m' + 'ERROR: the manifest.json or config.json is lost.' + '\u001b[39m')
-      .message;
-   }
+    }
   } catch (e) {
-    throw Error('\u001b[31m' + 'ERROR: the manifest.json or config.json file format is invalid.' +
+    throw Error('\u001b[31m' + 'ERROR: the manifest.json file format is invalid.' +
       '\u001b[39m').message;
   }
   return manifest;
-}
-
-
-function buildManifest(manifest, aceConfigPath) {
-  try {
-    const configJson =  JSON.parse(fs.readFileSync(aceConfigPath).toString());
-    const srcPath = process.env.srcPath;
-    manifest.type = process.env.abilityType;
-    manifest.pages = []
-    if (manifest.type === 'form') {
-      if (configJson.module && configJson.module.abilities) {
-        manifest.pages = getForms(configJson, srcPath);
-      } else {
-        throw Error('\u001b[31m'+
-          'EERROR: the config.json file miss keyword module || module[abilities].' +
-          '\u001b[39m').message;
-      }
-      manifest.minPlatformVersion = configJson.app.apiVersion.compatible;
-    }
-  } catch (e) {
-    throw Error('\u001b[31m' + 'ERROR: the config.json file is lost or format is invalid.' +
-      '\u001b[39m').message;
-  }
-}
-
-function getForms(configJson, srcPath) {
-  const pages = [];
-  for (const ability of configJson.module.abilities){
-    if (ability.srcPath === srcPath) {
-      readForms(ability, pages);
-      break;
-    }
-  }
-  return pages;
-}
-
-function readForms(ability, pages) {
-  if (ability.forms) {
-    for (const form of ability.forms){
-      if (form.src) {
-        pages.push(form.src);
-      }
-    }
-  } else {
-    throw Error('\u001b[31m' +`ERROR: the ${ability} in config.json file  miss forms.' +
-      '\u001b[39m`).message;
-  }
 }
 
 function loadEntryObj(projectPath, device_level, abilityType, manifestFilePath) {
@@ -151,8 +100,42 @@ function addPageEntryObj(manifest, projectPath) {
   return entryObj;
 }
 
+function compileCardModule(env) {
+  if (process.env.aceModuleJsonPath && fs.existsSync(process.env.aceModuleJsonPath)) {
+    const moduleJsonConfig = JSON.parse(fs.readFileSync(process.env.aceModuleJsonPath).toString());
+    if (moduleJsonConfig.module && moduleJsonConfig.module.uiSyntax === 'ets') {
+      process.env.DEVICE_LEVEL = 'card';
+    } else if (validateCardModule(moduleJsonConfig) && !process.env.compileCardModule) {
+      process.env.compileCardModule = true;
+      const cmd = `webpack --config webpack.rich.config.js --env compilerType=${env.compilerType} ` +
+        `DEVICE_LEVEL=card aceModuleRoot=${process.env.projectPath} ` +
+        `aceModuleJsonPath=${process.env.aceModuleJsonPath} aceProfilePath=${process.env.aceProfilePath} ` +
+        `watchMode=${process.env.watchMode} cachePath=${process.env.cachePath} ` +
+        `aceModuleBuild=${process.env.buildPath}`;
+      shell.exec(cmd, (err) => {
+        if (err) {
+          throw Error(err).message;
+        }
+      })
+    }
+  }
+}
+
+function validateCardModule(moduleJsonConfig) {
+  if (moduleJsonConfig.module && moduleJsonConfig.module.extensionAbilities) {
+    for (let i = 0; i < moduleJsonConfig.module.extensionAbilities.length; i++) {
+      const extensionAbility = moduleJsonConfig.module.extensionAbilities[i];
+      if (extensionAbility.type && extensionAbility.type === 'form') {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 module.exports = {
   deleteFolderRecursive: deleteFolderRecursive,
   readManifest: readManifest,
-  loadEntryObj: loadEntryObj
+  loadEntryObj: loadEntryObj,
+  compileCardModule: compileCardModule
 };

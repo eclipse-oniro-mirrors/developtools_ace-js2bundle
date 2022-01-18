@@ -27,9 +27,13 @@ const { PLATFORM }= require('./lib/lite/lite-enum')
 const util = require('./lib/util')
 const TerserPlugin = require('terser-webpack-plugin')
 const CopyPlugin = require("copy-webpack-plugin")
-const watchMode = (process.env.watchMode && process.env.watchMode === 'true') || false
-
-const { deleteFolderRecursive, readManifest, loadEntryObj } = require('./main.product')
+let watchMode = (process.env.watchMode && process.env.watchMode === 'true') || false
+const {
+  deleteFolderRecursive,
+  readManifest,
+  loadEntryObj,
+  compileCardModule
+} = require('./main.product')
 
 const richModule = {
   rules: [
@@ -174,6 +178,9 @@ let config = {
 }
 
 function setConfigs(env) {
+  if (process.env.aceModuleJsonPath || env.aceModuleJsonPath) {
+    process.env.compileMode = 'moduleJson';
+  }
   process.env.error = env.error === undefined ? true : env.error
   process.env.warning = env.warning === undefined ? true : env.warning
   process.env.note = env.note === undefined ? true : env.note
@@ -185,11 +192,14 @@ function setConfigs(env) {
     path.resolve(process.env.projectPath, 'build');
   process.env.cachePath = env.cachePath || process.env.cachePath || path.resolve(__dirname, 'node_modules/.cache');
   process.env.aceManifestPath = process.env.aceManifestPath || path.resolve(process.env.projectPath, 'manifest.json');
-  process.env.abilityType = process.env.abilityType || 'page'
-  process.env.DEVICE_LEVEL = process.env.DEVICE_LEVEL || 'rich'
+  process.env.abilityType = process.env.abilityType || 'page';
+  process.env.DEVICE_LEVEL = env.DEVICE_LEVEL || process.env.DEVICE_LEVEL || 'rich';
+  process.env.aceModuleJsonPath = env.aceModuleJsonPath || process.env.aceModuleJsonPath;
+  process.env.aceProfilePath = env.aceProfilePath || process.env.aceProfilePath;
+  watchMode = (process.env.watchMode && process.env.watchMode === 'true') ||
+    (env.watchMode && env.watchMode === 'true') || false;
   if (process.env.abilityType === 'page' || process.env.abilityType === 'form') {
     const manifest = readManifest(process.env.aceManifestPath)
-    process.env.DEVICE_LEVEL = manifest.type === 'form' ? 'card' : 'rich'
     process.env.PLATFORM_VERSION = PLATFORM.VERSION6;
     const version = parseInt(manifest.minPlatformVersion);
     if (version == 5) {
@@ -226,11 +236,16 @@ function notPreview(env) {
 }
 
 module.exports = (env) => {
-  setConfigs(env)
-  deleteFolderRecursive(process.env.buildPath);
+  setConfigs(env);
+  if (process.env.compileMode === 'moduleJson') {
+    compileCardModule(env);
+    config.entry = {};
+  } else {
+    deleteFolderRecursive(process.env.buildPath);
+    config.entry = loadEntryObj(process.env.projectPath, process.env.DEVICE_LEVEL,
+      process.env.abilityType, process.env.aceManifestPath);
+  }
   config.cache.cacheDirectory = path.resolve(process.env.cachePath, '.rich_cache');
-  config.entry = loadEntryObj(process.env.projectPath, process.env.DEVICE_LEVEL,
-    process.env.abilityType, process.env.aceManifestPath)
   config.output.path = path.resolve(__dirname, process.env.buildPath)
   config.plugins = [
     new ResourcePlugin(process.env.projectPath, process.env.buildPath, process.env.aceManifestPath),
