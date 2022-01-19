@@ -175,7 +175,7 @@ function addAbilityEntryObj(moduleJson) {
   const entranceFiles = readAbilityEntrance(moduleJson);
   entranceFiles.forEach(filePath => {
     const key = filePath.replace(/^\.\/js\//, './').replace(/\.js$/, '');
-    abilityEntryObj[key] = path.resolve(proces.env.projectPath, '../', filePath);
+    abilityEntryObj[key] = path.resolve(process.env.projectPath, '../', filePath);
   });
   return abilityEntryObj;
 }
@@ -238,9 +238,9 @@ function readFormPages(moduleJson) {
   const pages = [];
   if (moduleJson.module.extensionAbilities && moduleJson.module.extensionAbilities.length) {
     moduleJson.module.extensionAbilities.forEach(extensionAbility => {
-      if (extensionAbility.type && extensionAbility.type === 'form' && extensionAbility.metadate &&
-        extensionAbility.metadate.length) {
-        extensionAbility.metadate.forEach(item => {
+      if (extensionAbility.type && extensionAbility.type === 'form' && extensionAbility.metadata &&
+        extensionAbility.metadata.length) {
+        extensionAbility.metadata.forEach(item => {
           if (item.resource && /\@profile\:/.test(item.resource)) {
             parseFormConfig(item.resource, pages);
           }
@@ -275,7 +275,7 @@ function buildManifest(manifest) {
     if (process.env.DEVICE_LEVEL === 'card') {
       manifest.pages = readFormPages(moduleJson);
     }
-    manifest.minPlatformVersion = configJson.app.apiVersion.compatible;
+    manifest.minPlatformVersion = moduleJson.app.minAPIVersion;
   } catch (e) {
     throw Error("\x1B[31m" + 'ERROR: the module.json file is lost or format is invalid.' +
       "\x1B[39m").message;
