@@ -248,6 +248,7 @@ function readFormPages(moduleJson) {
       }
     });
   }
+  return pages;
 }
 
 function parseFormConfig(resource, pages) {
