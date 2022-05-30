@@ -55,9 +55,15 @@ class ResultStates {
     const buildPath = this.options.build;
     const commonPaths = new Set();
     const i18nPaths = new Set();
+    const cachePath = path.resolve(process.env.cachePath, '.rich_cache');
+    const entryFile = path.join(cachePath, 'entry.json');
+    const entryPaths = new Set();
 
     compiler.hooks.compilation.tap('toFindModule', (compilation) => {
       compilation.hooks.buildModule.tap("findModule", (module) => {
+        if (module.resource && fs.existsSync(module.resource)) {
+          entryPaths.add(module.resource);
+        }
         if (module.context.indexOf(process.env.projectPath) >= 0) {
           return;
         }
@@ -86,6 +92,7 @@ class ResultStates {
       for (let i18nPath of i18nPaths) {
         circularFile(i18nPath, path.resolve(buildPath, '../share/i18n'));
       }
+      addCacheFiles(entryFile, cachePath, entryPaths);
     });
 
     compiler.hooks.done.tap('Result States', (stats) => {
@@ -152,6 +159,20 @@ class ResultStates {
       );
     });
   }
+}
+
+function addCacheFiles(entryFile, cachePath, entryPaths) {
+  const entryArray = [];
+  if (fs.existsSync(entryFile)) {
+    const oldArray = JSON.parse(fs.readFileSync(entryFile));
+    oldArray.forEach(element => {
+      entryPaths.add(element);
+    })
+  } else if (!fs.existsSync(cachePath)) {
+    mkDir(cachePath);
+  }
+  entryArray.push(...entryPaths);
+  fs.writeFileSync(entryFile, JSON.stringify(entryArray));
 }
 
 const red = '\u001b[31m';
