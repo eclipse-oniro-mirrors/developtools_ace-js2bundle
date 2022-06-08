@@ -177,6 +177,36 @@ function filterWorker(workerPath) {
   return /\.(ts|js)$/.test(workerPath);
 }
 
+function compareCache(cachePath) {
+  const entryFile = path.join(cachePath, 'entry.json');
+  const cssFile = process.env.watchCSSFiles;
+
+  let files = [];
+  if (fs.existsSync(cssFile)) {
+    const cssObject = JSON.parse(fs.readFileSync(cssFile));
+    if (cssObject['clear'] === true) {
+      deleteFolderRecursive(cachePath);
+      return;
+    }
+    Object.keys(cssObject).forEach(key => {
+      if (key !== 'entry') {
+        files.push(key);
+      }
+    })
+  }
+
+  if (fs.existsSync(entryFile)) {
+    files = files.concat(JSON.parse(fs.readFileSync(entryFile)));
+  }
+
+  for(let file of files) {
+    if (!fs.existsSync(file)) {
+      deleteFolderRecursive(cachePath);
+      break;
+    }
+  }
+}
+
 module.exports = {
   deleteFolderRecursive: deleteFolderRecursive,
   readManifest: readManifest,
@@ -186,4 +216,5 @@ module.exports = {
   checkMultiResourceBuild: checkMultiResourceBuild,
   multiResourceBuild: multiResourceBuild,
   readWorkerFile: readWorkerFile,
+  compareCache: compareCache
 };
