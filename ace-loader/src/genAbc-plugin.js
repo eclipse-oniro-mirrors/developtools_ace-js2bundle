@@ -55,6 +55,8 @@ const blue = '\u001b[34m';
 const hashFile = 'gen_hash.json';
 const ARK = '/ark/';
 let delayCount = 0;
+const TS2ABC = 'ts2abc';
+const ES2ABC = 'es2abc';
 
 class GenAbcPlugin {
   constructor(output_, arkDir_, nodeJs_, workerFile_, isDebug_) {
@@ -70,7 +72,7 @@ class GenAbcPlugin {
     } else if (fs.existsSync(path.resolve(arkDir, 'build-mac'))) {
       isMac = true;
     } else if (!fs.existsSync(path.resolve(arkDir, 'build'))) {
-      console.error(red, 'ETS:ERROR find build fail', reset);
+      console.error(red, 'ERROR find build fail', reset);
       process.exitCode = FAIL;
       return;
     }
@@ -144,7 +146,7 @@ function writeFileSync(inputString, output, jsBundleFile, isToBin) {
       let fileSize = fs.statSync(output).size;
       intermediateJsBundle.push({path: output, size: fileSize});
     } else {
-      console.error(red, `ETS:ERROR Failed to convert file ${jsBundleFile} to bin. ${output} is lost`, reset);
+      console.error(red, `ERROR Failed to convert file ${jsBundleFile} to bin. ${output} is lost`, reset);
       process.exitCode = FAIL;
     }
 }
@@ -196,22 +198,39 @@ function splitJsBundlesBySize(bundleArray, groupNumber) {
 
 function invokeWorkerToGenAbc() {
   let param = '';
-  if (isDebug) {
-    param += ' --debug';
-  }
+  let cmdPrefix = '';
 
-  let js2abc = path.join(arkDir, 'build', 'src', 'index.js');
-  if (isWin) {
-    js2abc = path.join(arkDir, 'build-win', 'src', 'index.js');
-  } else if (isMac) {
-    js2abc = path.join(arkDir, 'build-mac', 'src', 'index.js');
+  if (process.env.panda === TS2ABC) {
+    if (isDebug) {
+      param += ' --debug';
+    }
+
+    let js2abc = path.join(arkDir, 'build', 'src', 'index.js');
+    if (isWin) {
+      js2abc = path.join(arkDir, 'build-win', 'src', 'index.js');
+    } else if (isMac) {
+      js2abc = path.join(arkDir, 'build-mac', 'src', 'index.js');
+    }
+    cmdPrefix = `${nodeJs} --expose-gc "${js2abc}" ${param} `;
+  } else if (process.env.panda === ES2ABC  || process.env.panda === 'undefined' || process.env.panda === undefined) {
+    if (isDebug) {
+      param += ' --debug-info';
+    }
+    let es2abc = path.join(arkDir, 'build', 'bin', 'es2abc');
+    if (isWin) {
+      es2abc = path.join(arkDir, 'build-win', 'bin', 'es2abc.exe');
+    } else if (isMac) {
+      es2abc = path.join(arkDir, 'build-mac', 'bin', 'es2abc');
+    }
+    cmdPrefix = `"${es2abc}" ${param} `;
+  } else {
+    console.error(red, `ERROR please set panda module`, reset);
   }
 
   filterIntermediateJsBundleByHashJson(buildPathInfo, intermediateJsBundle);
   const maxWorkerNumber = 3;
   const splitedBundles = splitJsBundlesBySize(fileterIntermediateJsBundle, maxWorkerNumber);
   const workerNumber = maxWorkerNumber < splitedBundles.length ? maxWorkerNumber : splitedBundles.length;
-  const cmdPrefix = `${nodeJs} --expose-gc "${js2abc}" ${param} `;
 
   const clusterNewApiVersion = 16;
   const currentNodeVersion = parseInt(process.version.split('.')[0]);
@@ -301,7 +320,7 @@ function filterIntermediateJsBundleByHashJson(buildPath, inputPaths) {
       let abcPath = input.replace(/_.js$/, '.abc');
 
       if (!fs.existsSync(input)) {
-        console.error(red, `ETS:ERROR ${input} is lost`, reset);
+        console.error(red, `ERROR ${input} is lost`, reset);
         process.exitCode = FAIL;
         break;
       }
@@ -332,7 +351,7 @@ function writeHashJson() {
     let input = fileterIntermediateJsBundle[i].path;
     let abcPath = input.replace(/_.js$/, '.abc');
     if (!fs.existsSync(input) || !fs.existsSync(abcPath)) {
-      console.error(red, `ETS:ERROR ${input} is lost`, reset);
+      console.error(red, `ERROR ${input} is lost`, reset);
       process.exitCode = FAIL;
       break;
     }
