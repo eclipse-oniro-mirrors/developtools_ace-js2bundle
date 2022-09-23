@@ -26,22 +26,15 @@ const ES2ABC = 'es2abc';
 function js2abcByWorkers(jsonInput, cmd) {
   const inputPaths = JSON.parse(jsonInput);
   for (let i = 0; i < inputPaths.length; ++i) {
-    let input = inputPaths[i].path;
-    let singleCmd = `${cmd} "${input}"`;
+    // for matching debug info mechanism
+    const input = inputPaths[i].path.replace(/\.temp\.js$/, "_.js");
+    const cacheOutputPath = inputPaths[i].cacheOutputPath;
+    const cacheAbcFilePath = cacheOutputPath.replace(/\.temp\.js$/, ".abc");
+    const singleCmd = `${cmd} "${cacheOutputPath}" -o "${cacheAbcFilePath}" --source-file "${input}"`;
     try {
       childProcess.execSync(singleCmd);
     } catch (e) {
-      console.error(red, `ERROR Failed to convert file ${input} to abc `, reset);
-      process.exit(FAIL);
-    }
-
-    const abcFile = input.replace(/\.js$/, '.abc');
-    if (fs.existsSync(abcFile)) {
-      const abcFileNew = abcFile.replace(/_.abc$/, '.abc');
-      fs.copyFileSync(abcFile, abcFileNew);
-      fs.unlinkSync(abcFile);
-    } else {
-      console.error(red, `ERROR ${abcFile} is lost`, reset);
+      console.debug(red, `ERROR Failed to convert file ${input} to abc `, reset);
       process.exit(FAIL);
     }
   }
@@ -50,9 +43,10 @@ function js2abcByWorkers(jsonInput, cmd) {
 function es2abcByWorkers(jsonInput, cmd) {
   const inputPaths = JSON.parse(jsonInput);
   for (let i = 0; i < inputPaths.length; ++i) {
-    const input = inputPaths[i].path;
-    const abcFile = input.replace(/_.js$/, '.abc');
-    const singleCmd = `${cmd} "${input}" --output "${abcFile}"`;
+    const input = inputPaths[i].path.replace(/\.temp\.js$/, "_.js");
+    const cacheOutputPath = inputPaths[i].cacheOutputPath;
+    const cacheAbcFilePath = cacheOutputPath.replace(/\.temp\.js$/, ".abc");
+    const singleCmd = `${cmd} "${cacheOutputPath}" --output "${cacheAbcFilePath}" --source-file "${input}"`;
     console.debug('gen abc cmd is: ', singleCmd, ' ,file size is:', inputPaths[i].size, ' byte');
     try {
       childProcess.execSync(singleCmd);
@@ -67,11 +61,11 @@ function es2abcByWorkers(jsonInput, cmd) {
 
 if (cluster.isWorker && process.env["inputs"] !== undefined && process.env["cmd"] !== undefined) {
   if (process.env.panda === TS2ABC) {
-    js2abcByWorkers(process.env['inputs'], process.env['cmd']);
+    js2abcByWorkers(process.env["inputs"], process.env["cmd"]);
   } else if (process.env.panda === ES2ABC  || process.env.panda === 'undefined' || process.env.panda === undefined) {
-    es2abcByWorkers(process.env['inputs'], process.env['cmd']);
+    es2abcByWorkers(process.env["inputs"], process.env["cmd"]);
   } else {
-    console.error(red, `ERROR please set panda module`, reset);
+    logger.error(red, `ERROR please set panda module`, reset);
     process.exit(FAIL);
   }
   process.exit(SUCCESS);
